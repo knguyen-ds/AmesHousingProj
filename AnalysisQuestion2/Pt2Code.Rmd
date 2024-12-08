@@ -1,0 +1,473 @@
+---
+title: "Code Pt. 2"
+output:
+  word_document: default
+  html_notebook: default
+---
+
+```{r}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(corrplot)
+library(lattice)
+
+#load dataset
+trainData <- read.csv("/Users/katie/Documents/MSDS/Statistical Science/Unit 13/Project/train.csv")
+train <- trainData
+head(train)
+
+testData <- read.csv("/Users/katie/Documents/MSDS/Statistical Science/Unit 13/Project/test.csv")
+test <- testData
+head(test)
+
+# Change based on data descriptions file
+changeColumnNA <- c("MiscFeature", "Fence", "PoolQC", "GarageCond", 
+                    "GarageQual", "GarageFinish", "GarageType", 
+                    "FireplaceQu", "BsmtFinType2", "BsmtFinType1", 
+                    "BsmtExposure", "BsmtCond", "BsmtQual", "Alley", "MasVnrType")
+train <- train %>%
+  mutate(across(all_of(changeColumnNA), ~replace(., is.na(.), "None")))
+test <- test %>%
+  mutate(across(all_of(changeColumnNA), ~replace(., is.na(.), "None")))
+
+ggplot(train, aes(x = SalePrice)) +
+  geom_histogram(binwidth = 17000, fill = "orange", color = "black", alpha = 0.7) +
+  labs(title = "Histogram of Sale Price", 
+       x = "Sale Price ($)", 
+       y = "Frequency") +
+  theme_minimal()
+```
+
+```{r}
+train$LogSalePrice <- log(train$SalePrice)
+
+ggplot(train, aes(x = LogSalePrice)) +
+  geom_histogram(binwidth = 0.1, fill = "orange", color = "black", alpha = 0.7) +
+  labs(title = "Histogram of Log-Transformed Sale Price", 
+       x = "Log(Sale Price)", 
+       y = "Count") +
+  theme_minimal()
+```
+```{r}
+# Define the mappings for categorical variables changing to numeric
+quality_mapping <- c("Ex" = 5, "Gd" = 4, "TA" = 3, "Fa" = 2, "Po" = 1, "None" = 0, "No"=0)
+bsmtExp_mapping <- c("Gd" = 4, "Av" = 3, "Mn" = 2, "No" = 1, "None" = 0)
+fence_mapping <- c("GdPrv" = 4, "MnPrv" = 3, "GdWo" = 2, "MnWw" = 1, "None" = 0)
+garageFinish_mapping <- c("Fin" = 3, "RFn" = 2, "Unf" = 1, "None" = 0)
+functional_mapping <- c("Typ" = 8, "Min1" = 7, "Min2" = 6, "Mod" = 5, "Maj1" = 4, 
+                        "Maj2" = 3, "Sev" = 2, "Sal" = 1)
+centralAir_mapping <- c("Y" = 1, "N" = 0)
+bsmtFin_mapping <- c("GLQ" = 6, "ALQ" = 5, "BLQ" = 4, "Rec" = 3, "LwQ" = 2, "Unf" = 1, "None" = 0)
+
+# List of columns to be updated
+columns_to_update <- c("ExterQual", "ExterCond", "BsmtQual", "BsmtCond", "HeatingQC", 
+                       "KitchenQual", "FireplaceQu", "GarageQual", "GarageCond", "PoolQC", 
+                       "BsmtExposure", "Fence", "GarageFinish", "Functional", "CentralAir", 
+                       "BsmtFinType1", "BsmtFinType2")
+
+# Apply the appropriate mapping for each column
+train[columns_to_update] <- lapply(train[columns_to_update], function(x) {
+  if (all(levels(factor(x)) %in% names(quality_mapping))) {
+    as.numeric(factor(x, levels = names(quality_mapping), labels = quality_mapping[names(quality_mapping)]))
+  } else if (all(levels(factor(x)) %in% names(fence_mapping))) {
+    as.numeric(factor(x, levels = names(fence_mapping), labels = fence_mapping[names(fence_mapping)]))
+  } else if (all(levels(factor(x)) %in% names(garageFinish_mapping))) {
+    as.numeric(factor(x, levels = names(garageFinish_mapping), labels = garageFinish_mapping[names(garageFinish_mapping)]))
+  } else if (all(levels(factor(x)) %in% names(functional_mapping))) {
+    as.numeric(factor(x, levels = names(functional_mapping), labels = functional_mapping[names(functional_mapping)]))
+  } else if (all(levels(factor(x)) %in% names(centralAir_mapping))) {
+    as.numeric(factor(x, levels = names(centralAir_mapping), labels = centralAir_mapping[names(centralAir_mapping)]))
+  } else if (all(levels(factor(x)) %in% names(bsmtFin_mapping))) {
+    as.numeric(factor(x, levels = names(bsmtFin_mapping), labels = bsmtFin_mapping[names(bsmtFin_mapping)]))
+  } else if (all(levels(factor(x)) %in% names(bsmtExp_mapping))) {
+    as.numeric(factor(x, levels = names(bsmtExp_mapping), labels = bsmtExp_mapping[names(bsmtExp_mapping)]))  
+  } else {
+    x  # Return as is if no matching mapping is found
+  }
+})
+
+head(train[columns_to_update])
+```
+```{r}
+# Apply the same mappings for each column in the test set
+test[columns_to_update] <- lapply(test[columns_to_update], function(x) {
+  if (all(levels(factor(x)) %in% names(quality_mapping))) {
+    as.numeric(factor(x, levels = names(quality_mapping), labels = quality_mapping[names(quality_mapping)]))
+  } else if (all(levels(factor(x)) %in% names(fence_mapping))) {
+    as.numeric(factor(x, levels = names(fence_mapping), labels = fence_mapping[names(fence_mapping)]))
+  } else if (all(levels(factor(x)) %in% names(garageFinish_mapping))) {
+    as.numeric(factor(x, levels = names(garageFinish_mapping), labels = garageFinish_mapping[names(garageFinish_mapping)]))
+  } else if (all(levels(factor(x)) %in% names(functional_mapping))) {
+    as.numeric(factor(x, levels = names(functional_mapping), labels = functional_mapping[names(functional_mapping)]))
+  } else if (all(levels(factor(x)) %in% names(centralAir_mapping))) {
+    as.numeric(factor(x, levels = names(centralAir_mapping), labels = centralAir_mapping[names(centralAir_mapping)]))
+  } else if (all(levels(factor(x)) %in% names(bsmtFin_mapping))) {
+    as.numeric(factor(x, levels = names(bsmtFin_mapping), labels = bsmtFin_mapping[names(bsmtFin_mapping)]))
+  } else if (all(levels(factor(x)) %in% names(bsmtExp_mapping))) {
+    as.numeric(factor(x, levels = names(bsmtExp_mapping), labels = bsmtExp_mapping[names(bsmtExp_mapping)]))  
+  } else {
+    x  # Return as is if no matching mapping is found
+  }
+})
+
+head(test[columns_to_update])
+```
+
+
+```{r}
+totalRows <- nrow(train)
+
+# Count the number of missing values for each column
+missingData <- sapply(train, function(x) sum(is.na(x)))
+
+# Calculate the percentage of missing values for each column
+percNAMissing <- (missingData / totalRows) * 100
+numeric <- sapply(train, is.numeric)
+
+# Create a summary table with column names, number of missing values, and the percentage of missing values
+missingSummary <- data.frame(
+  Column = names(train),
+  MissingNACount = missingData,
+  PercentageNAMissing = percNAMissing,
+  Numeric = numeric
+)
+
+missingSummary <- missingSummary %>%
+  arrange(desc(Numeric), desc(MissingNACount))
+missingSummary
+
+```
+```{r}
+# Remove unnecessary columns/rows
+trainNoMissing <- train %>%
+  select(-Electrical) %>%
+  mutate(across(where(is.numeric), ~ ifelse(is.na(.), mean(., na.rm = TRUE), .))) %>%
+  filter(GrLivArea <= 4000) %>% #Outliers in training setbased on pt. 1 code
+  filter(TotalBsmtSF <= 3000, MasVnrArea <= 1300, 
+         LotFrontage <= 300, LotArea <= 100000, 
+         GarageArea <= 1200, BsmtFinSF2 <= 1400)
+trainNoMissing$AllSQFT = trainNoMissing$GrLivArea + trainNoMissing$TotalBsmtSF
+trainNoMissing <- trainNoMissing %>%
+  filter(AllSQFT <= 6000)
+head(trainNoMissing)
+
+```
+```{r}
+print(paste("# of NA values left:", sum(is.na(trainNoMissing))))
+```
+
+```{r}
+testNoMissing <- test %>%
+  # Replace NA in the numeric columns with the column's mean
+  mutate(across(where(is.numeric), ~ ifelse(is.na(.), mean(., na.rm = TRUE), .)))
+print(paste("# of NA values:", sum(is.na(testNoMissing))))
+
+testNoMissing$AllSQFT = testNoMissing$GrLivArea + testNoMissing$TotalBsmtSF
+
+# Remove non-numeric columns with NA values
+removeMeTest <- colnames(testNoMissing)[sapply(testNoMissing, function(x) !is.numeric(x) && any(is.na(x)))]
+removeMeTest
+
+testNoMissing <- testNoMissing %>%
+  select(-all_of(removeMeTest))
+head(testNoMissing)
+remainingColumns <- colnames(testNoMissing)
+```
+
+```{r}
+# Obtain just the numeric columns to compare against LogSalePrice
+library(dplyr)
+train_numeric <- trainNoMissing %>%
+  select(where(is.numeric)) %>%
+  select(-LogSalePrice, -Id, -SalePrice)
+
+# List the correlation values
+correlationTable <- train_numeric %>%
+  summarise(across(everything(), ~ cor(.x, trainNoMissing$LogSalePrice, use = "complete.obs"))) %>%
+  pivot_longer(everything(), names_to = "Variable", values_to = "CorrWithLogSalePrice")
+
+correlationTable <- correlationTable %>%
+  arrange(desc(abs(CorrWithLogSalePrice)))
+correlationTable
+```
+```{r}
+#Plot all numeric variables against LogSalePrice
+sortedVariables <- correlationTable %>%
+  arrange(desc(CorrWithLogSalePrice)) %>%
+  pull(Variable)
+
+num_plots_per_window <- 4
+num_windows <- ceiling(length(sortedVariables) / num_plots_per_window)
+
+for (i in 1:num_windows) {
+  
+  par(mfrow = c(2, 2))  
+  for (j in 0:3) {
+    if (i * num_plots_per_window - 3 + j <= length(sortedVariables)) {
+      col_name <- sortedVariables[(i - 1) * num_plots_per_window + j + 1]
+      plot(train_numeric[[col_name]], trainNoMissing$LogSalePrice,
+           main = paste("\nCorr =", round(cor(train_numeric[[col_name]], trainNoMissing$LogSalePrice, use = "complete.obs"), 2)),
+           xlab = col_name, ylab = "LogSalePrice", col = "orange", pch = 16, cex.main = 1)
+    }
+  }
+}
+
+```
+
+```{r}
+cor_matrix <- cor(train_numeric, use = "complete.obs", method = "pearson")
+library(reshape2)
+
+# Melt the correlation matrix into long format
+cor_melted <- melt(cor_matrix)
+
+# Create the heatmap
+ggplot(cor_melted, aes(Var1, Var2, fill = value)) +
+  geom_tile() +
+  geom_text(aes(label = round(value, 3)), color = "black", size = 0.5) +
+  scale_fill_gradient2(low = "turquoise1", high = "turquoise4", mid = "white", midpoint = 0) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(size = 5, angle = 45, hjust = 1),
+        axis.text.y = element_text(size = 5)) +
+  labs(title = "Heatmap of All Numeric Variables", x = "Variables", y = "Variables")
+```
+
+```{r}
+# Total SF for house (incl. basement)
+ggplot(trainNoMissing, aes(x = AllSQFT, y = LogSalePrice)) +
+  geom_point(color = "seagreen4") + 
+  ggtitle("AllSQFT vs LogSalePrice") +
+  xlab("All Square Footage") + 
+  ylab("Log of Sale Price") +
+  theme_minimal()
+
+ggplot(trainNoMissing, aes(x = AllSQFT)) +
+  geom_histogram(binwidth = 150, fill = "seagreen4", color = "black", alpha = 0.7) +
+  labs(title = "Histogram of AllSQFT", 
+       x = "AllSQFT", 
+       y = "Count") +
+  theme_minimal()
+
+# Exploring whether log-transform should apply to predictors
+trainNoMissing$LogAllSQFT= log(trainNoMissing$AllSQFT)
+ggplot(trainNoMissing, aes(x = LogAllSQFT, y = LogSalePrice)) +
+  geom_point(color = "seagreen1") +  
+  ggtitle("LogAllSQFT vs LogSalePrice") +
+  xlab("Log of All Square Footage") + 
+  ylab("Log of Sale Price") +
+  theme_minimal()
+
+ggplot(trainNoMissing, aes(x = LogAllSQFT)) +
+  geom_histogram(binwidth = 0.1, fill = "seagreen1", color = "black", alpha = 0.7) +
+  labs(title = "Histogram of Log(AllSQFT)", 
+       x = "Log(AllSQFT)", 
+       y = "Count") +
+  theme_minimal()
+```
+
+```{r}
+# Fit the linear regression model with OverallQual
+model_qual <- lm(LogSalePrice ~ OverallQual, data = trainNoMissing)
+summary(model_qual)
+
+# Plot the regression line with OverallQual
+ggplot(trainNoMissing, aes(x = OverallQual, y = LogSalePrice)) +
+  geom_point(color = "orange") +
+  geom_smooth(method = "lm", color = "black", se = FALSE) + 
+  labs(title = "Linear Regression: Log(SalePrice) vs. OverallQual",
+       x = "Overall Quality",
+       y = "Log(SalePrice)") +
+  theme_minimal()
+
+# Calculate the predicted LogSalePrice using the new model
+trainNoMissing$PredictedLogSalePrice_Qual <- predict(model_qual)
+trainNoMissing$PredictedSalePrice_Qual <- exp(trainNoMissing$PredictedLogSalePrice_Qual)
+
+# Find CV PRESS
+cvpress_Qual <- sum((trainNoMissing$SalePrice - trainNoMissing$PredictedSalePrice_Qual)^2)
+print(paste("CV PRESS:", cvpress_Qual))
+
+# Calculate AIC 
+aic_Qual <- AIC(model_qual)
+print(paste("AIC:", aic_Qual))
+```
+```{r}
+par(mfrow = c(2, 2))  # Arrange the plots in a 2x2 grid
+plot(model_qual)
+```
+
+```{r}
+par(mfrow = c(2, 2))
+
+# Residuals vs Fitted values
+plot(fitted(model_qual), residuals(model_qual),
+     xlab = "Fitted Values", ylab = "Residuals", main = "Residuals vs. Fitted Values", pch = 19, col="purple")
+abline(h = 0, col = "black")
+
+  # Studentized Residuals
+plot(fitted(model_qual), rstudent(model_qual),
+     xlab = "Fitted Values", ylab = "Studentized Residuals", main = "Studentized Residuals vs. Fitted Values", 
+     pch = 19, col="purple")
+abline(h = 0, col = "black")
+  
+# Histogram of residuals
+hist(residuals(model_qual),
+     xlab = "Residuals", main = "Histogram of Residuals", col = "purple", border = "black", breaks = 20, probability=TRUE)
+curve(dnorm(x, mean = mean(residuals(model_qual)), sd = sd(residuals(model_qual))), col = "black", lwd = 2, add = TRUE)
+
+# Q-Q plot of residuals
+qqnorm(residuals(model_qual), main = "Q-Q Plot of Residuals", col="purple", pch=19) 
+qqline(residuals(model_qual), col = "black")
+```
+
+
+```{r}
+nonnumeric <- sapply(trainNoMissing, function(x) !is.numeric(x) && !is.factor(x))
+
+# Get only non-numeric columns
+nonnumeric <- names(trainNoMissing)[nonnumeric]
+nonnumeric
+
+# Set up 2x2 plot layout
+par(mfrow = c(2, 2))
+
+# Plot each non-numeric variable against LogSalePrice
+for (var in nonnumeric) {
+  if (length(unique(trainNoMissing[[var]])) > 1) {  # Only plot if the variable has more than 1 unique value
+    # Create a table of mean LogSalePrice for each level of the categorical variable
+    means <- tapply(trainNoMissing$LogSalePrice, trainNoMissing[[var]], mean, na.rm = TRUE)
+    
+    # Create the bar plot
+    barplot(means, 
+            main = paste("LogSalePrice vs", var), 
+            ylab = "Mean Log(SalePrice)", 
+            ylim = c(11,13),
+            col = "skyblue", 
+            border = "black",
+            las = 2)
+    
+  }
+}
+```
+
+```{r}
+# Fit the multiple linear regression model with Full Bath
+multipleLMmodel <- lm(LogSalePrice ~ GrLivArea * FullBath, data = trainNoMissing)
+summary(multipleLMmodel)
+
+trainNoMissing$PredictedLogSalePrice_MLM <- predict(multipleLMmodel)
+trainNoMissing$PredictedSalePrice_MLM <- exp(trainNoMissing$PredictedLogSalePrice_MLM)
+
+# Find CV PRESS
+cvpress_MLM <- sum((trainNoMissing$SalePrice - trainNoMissing$PredictedSalePrice_MLM)^2)
+print(paste("CV PRESS:", cvpress_MLM))
+
+# Calculate AIC 
+aic_MLM <- AIC(multipleLMmodel)
+print(paste("AIC:", aic_MLM))
+```
+
+```{r}
+par(mfrow = c(2, 2))  # Arrange the plots in a 2x2 grid
+plot(multipleLMmodel)
+```
+
+```{r}
+par(mfrow = c(2, 2))
+
+# Residuals vs Fitted values
+plot(fitted(multipleLMmodel), residuals(multipleLMmodel),
+     xlab = "Fitted Values", ylab = "Residuals", main = "Residuals vs. Fitted Values", pch = 19, col="turquoise")
+abline(h = 0, col = "black")
+
+  # Studentized Residuals
+plot(fitted(multipleLMmodel), rstudent(multipleLMmodel),
+     xlab = "Fitted Values", ylab = "Studentized Residuals", main = "Studentized Residuals vs. Fitted Values", 
+     pch = 19, col="turquoise")
+abline(h = 0, col = "black")
+  
+# Histogram of residuals
+hist(residuals(multipleLMmodel),
+     xlab = "Residuals", main = "Histogram of Residuals", col = "turquoise", border = "black", breaks = 20, probability=TRUE, xlim = c(-1, 1))
+curve(dnorm(x, mean = mean(residuals(multipleLMmodel)), sd = sd(residuals(multipleLMmodel))), col = "black", lwd = 2, add = TRUE)
+
+# Q-Q plot of residuals
+qqnorm(residuals(multipleLMmodel), main = "Q-Q Plot of Residuals", col="turquoise", pch=19) 
+qqline(residuals(multipleLMmodel), col = "black")
+```
+
+
+```{r}
+bigmultipleLMmodel <- lm(LogSalePrice ~ OverallQual * AllSQFT * GarageCars * 
+                           KitchenQual* ExterQual* X1stFlrSF , data = trainNoMissing)
+
+bigMLM_summary <- summary(bigmultipleLMmodel)
+bigMLM_summary
+
+trainNoMissing$PredictedLogSalePrice_bigMLM <- predict(bigmultipleLMmodel)
+trainNoMissing$PredictedSalePrice_bigMLM <- exp(trainNoMissing$PredictedLogSalePrice_bigMLM)
+
+# Find CV PRESS
+cvpress_bigMLM <- sum((trainNoMissing$SalePrice - trainNoMissing$PredictedSalePrice_bigMLM)^2)
+print(paste("CV PRESS:", cvpress_bigMLM))
+
+# Calculate AIC 
+aic_bigMLM <- AIC(bigmultipleLMmodel)
+print(paste("AIC:", aic_bigMLM))
+```
+```{r}
+par(mfrow = c(2, 2))  # Arrange the plots in a 2x2 grid
+plot(bigmultipleLMmodel)
+```
+
+```{r}
+par(mfrow = c(2, 2))
+
+# Residuals vs Fitted values
+plot(fitted(bigmultipleLMmodel), residuals(bigmultipleLMmodel),
+     xlab = "Fitted Values", ylab = "Residuals", main = "Residuals vs. Fitted Values", pch = 19, col="magenta")
+abline(h = 0, col = "black")
+
+  # Studentized Residuals
+plot(fitted(bigmultipleLMmodel), rstudent(bigmultipleLMmodel),
+     xlab = "Fitted Values", ylab = "Studentized Residuals", main = "Studentized Residuals vs. Fitted Values", 
+     pch = 19, col="magenta")
+abline(h = 0, col = "black")
+  
+# Histogram of residuals
+hist(residuals(bigmultipleLMmodel),
+     xlab = "Residuals", main = "Histogram of Residuals", col = "magenta", border = "black", breaks = 20, probability=TRUE, xlim = c(-1, 1))
+curve(dnorm(x, mean = mean(residuals(bigmultipleLMmodel)), sd = sd(residuals(bigmultipleLMmodel))), col = "black", lwd = 2, add = TRUE)
+
+# Q-Q plot of residuals
+qqnorm(residuals(bigmultipleLMmodel), main = "Q-Q Plot of Residuals", col="magenta", pch=19) 
+qqline(residuals(bigmultipleLMmodel), col = "black")
+```
+
+
+```{r}
+# Finalize
+testNoMissing$PredictedLogSalePrice_Qual <- predict(model_qual,newdata=testNoMissing)
+testNoMissing$SalePrice_Qual <- exp(testNoMissing$PredictedLogSalePrice_Qual)
+
+testNoMissing$PredictedLogSalePrice_MLM <- predict(multipleLMmodel,newdata=testNoMissing)
+testNoMissing$SalePrice_MLM <- exp(testNoMissing$PredictedLogSalePrice_MLM)
+
+testNoMissing$PredictedLogSalePrice_bigMLM <- predict(bigmultipleLMmodel,newdata=testNoMissing)
+testNoMissing$SalePrice_bigMLM <- exp(testNoMissing$PredictedLogSalePrice_bigMLM)
+```
+
+```{r}
+# Export
+write.csv(data.frame(Id = testNoMissing$Id, 
+                     SalePrice = testNoMissing$SalePrice_Qual), 
+          file = "submission_Qual.csv", row.names = FALSE)
+write.csv(data.frame(Id = testNoMissing$Id, 
+                     SalePrice = testNoMissing$SalePrice_MLM), 
+          file = "submission_MLM.csv", row.names = FALSE)
+write.csv(data.frame(Id = testNoMissing$Id, 
+                     SalePrice = testNoMissing$SalePrice_bigMLM), 
+          file = "submission_bigMLM.csv", row.names = FALSE)
+```
+
