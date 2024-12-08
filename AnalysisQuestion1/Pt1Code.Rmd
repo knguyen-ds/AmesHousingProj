@@ -1,0 +1,381 @@
+---
+title: "Code Pt. 1"
+output:
+  word_document: default
+  html_notebook: default
+  pdf_document: default
+---
+
+```{r}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(corrplot)
+library(lattice)
+
+#load dataset
+trainData <- read.csv("/Users/katie/Documents/MSDS/Statistical Science/Unit 13/Project/train.csv")
+
+#clean up data
+train <- trainData %>%
+  filter(!is.na(SalePrice) & !is.na(GrLivArea)
+         & Neighborhood %in% c("NAmes", "Edwards", "BrkSide"))
+head(train)
+```
+```{r}
+# Observe normality
+ggplot(train, aes(x = SalePrice)) +
+  geom_histogram(binwidth = 10000, fill = "orange", color = "black", alpha = 0.7) +
+  labs(title = "Histogram of Sale Price", 
+       x = "Sale Price ($)", 
+       y = "Frequency") +
+  theme_minimal()
+```
+```{r}
+# check for normality bc OG looks skewed
+train$LogSalePrice <- log(train$SalePrice)
+
+ggplot(train, aes(x = LogSalePrice)) +
+  geom_histogram(binwidth = 0.1, fill = "orange", color = "black", alpha = 0.7) +
+  labs(title = "Histogram of Log-Transformed Sale Price", 
+       x = "Log(Sale Price)", 
+       y = "Frequency") +
+  theme_minimal()
+```
+
+```{r}
+# plot square footage of the living area of the house vs Sales Price
+ggplot(train, aes(x = GrLivArea, y = LogSalePrice)) +
+  geom_point(alpha = 0.5, col = "orange") +
+  labs(title = "Sales Price vs Living Area", x = "Living Area (sqft)", y = "Log(Sales Price)") +
+  scale_x_continuous(breaks = seq(0, max(train$GrLivArea), by = 200)) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+
+```{r}
+#remove outliers
+trainNoOutliers <- train %>%
+  #filter(!Id %in% c(643, 725, 1299, 524))
+  filter(!Id %in% c(1299, 524)) #remove the 2 data points on RHS of plot
+head(trainNoOutliers)
+```
+```{r}
+#Build the regression model considering GrLivArea and Neighborhood
+model <- lm(LogSalePrice ~ GrLivArea, data = trainNoOutliers)
+summary(model)
+confint(model)
+
+#plot the predicted SalePrice vs. the actual SalePrice
+trainNoOutliers$LogpredictedSalePrice <- predict(model, newdata = trainNoOutliers)
+trainNoOutliers$predictedSalePrice <- exp(trainNoOutliers$LogpredictedSalePrice)
+
+ggplot(trainNoOutliers, aes(x = GrLivArea, y = LogSalePrice)) +
+  geom_point(alpha = 0.5, color = "orange") +
+  geom_line(aes(y = LogpredictedSalePrice), color = "black", size = 1) +
+  labs(title = "Sales Price vs Living Area", 
+       x = "Living Area (sqft)", y = "Log(Sales Price)") +
+  theme_minimal()
+
+par(mfrow = c(2, 2))  # Arrange the plots in a 2x2 grid
+plot(model)
+```
+```{r}
+# Find CV PRESS
+cvpress <- sum((trainNoOutliers$SalePrice - trainNoOutliers$predictedSalePrice)^2)
+print(paste("CV PRESS:", cvpress))
+
+# Calculate AIC 
+aic <- AIC(model)
+print(paste("AIC:", aic))
+
+```
+
+
+```{r}
+#Check assumptions
+
+par(mfrow = c(2, 2))
+
+# Residuals vs Fitted values
+plot(fitted(model), residuals(model),
+     xlab = "Fitted Values", ylab = "Residuals", main = "Residuals vs. Fitted Values", pch = 19, col="orange")
+abline(h = 0, col = "black")
+
+  # Studentized Residuals
+plot(fitted(model), rstudent(model),
+     xlab = "Fitted Values", ylab = "Studentized Residuals", main = "Studentized Residuals vs. Fitted Values", 
+     pch = 19, col="orange")
+abline(h = 0, col = "black")
+  
+# Histogram of residuals
+hist(residuals(model),
+     xlab = "Residuals", main = "Histogram of Residuals", col = "orange", border = "black", breaks = 20, probability=TRUE)
+curve(dnorm(x, mean = mean(residuals(model)), sd = sd(residuals(model))), col = "black", lwd = 2, add = TRUE)
+
+# Q-Q plot of residuals
+qqnorm(residuals(model), main = "Q-Q Plot of Residuals", col="orange", pch=19) 
+qqline(residuals(model), col = "black")
+```
+
+
+```{r}
+#View plot separated by neighborhood w colors
+ggplot(trainNoOutliers, aes(x = GrLivArea, y = LogSalePrice, color = Neighborhood)) +
+  geom_point(alpha = 0.5) +
+  labs(title = "Sales Price vs Living Area by Neighborhood", 
+       x = "Living Area (sqft)", 
+       y = "Log(Sales Price)") +
+  scale_color_discrete(labels = c("NAmes" = "North Ames", "Edwards" = "Edwards", "BrkSide" = "Brookside")) +
+  scale_x_continuous(breaks = seq(0, max(trainNoOutliers$GrLivArea), by = 200)) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+
+```{r}
+# Check for normality/variance with boxplot
+ggplot(trainNoOutliers, aes(x = Neighborhood, y = LogSalePrice, fill=Neighborhood)) +
+  geom_boxplot() +
+  labs(title = "Sales Price by Neighborhood", x = "Neighborhood", y = "Log(Sales Price)") +      
+  scale_x_discrete(labels = c("NAmes" = "North Ames", "Edwards" = "Edwards", "BrkSide" = "Brookside")) +
+  scale_fill_discrete(labels = c("NAmes" = "North Ames", "Edwards" = "Edwards", "BrkSide" = "Brookside")) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  theme_minimal()
+```
+
+```{r}
+# See correlations, box plots, density plot, histogram, etc. all at once
+library(GGally)
+library(dplyr)
+matrixPlot<-trainNoOutliers %>%
+  select(LogSalePrice, GrLivArea, Neighborhood) %>%
+  rename(
+    `Log(Sales Price)` = LogSalePrice,  # Change "SalePrice" to "Sales Price"
+    `Living Area` = GrLivArea,  # Change "GrLivArea" to "Living Area"
+  ) %>%
+  mutate(
+    Neighborhood = recode(Neighborhood, 
+                          "NAmes" = "North Ames", 
+                          "BrkSide" = "Brookside")
+  )
+ggpairs(matrixPlot,  mapping = aes(color = Neighborhood))
+```
+
+```{r}
+NAmes <- trainNoOutliers %>%
+  filter(Neighborhood %in% c("NAmes"))
+head(NAmes)
+
+#Build the NAmes regression model considering GrLivArea and Neighborhood
+model_NAmes <- lm(LogSalePrice ~ GrLivArea, data = NAmes)
+summary(model_NAmes)
+confint(model_NAmes)
+
+#plot the predicted SalePrice vs. the actual SalePrice
+NAmes$LogpredictedPrice <- predict(model_NAmes, newdata = NAmes)
+NAmes$predictedPrice <- exp(NAmes$LogpredictedPrice)
+
+# Find CV PRESS
+cvpress_N <- sum((NAmes$SalePrice - NAmes$predictedPrice)^2)
+print(paste("CV PRESS:", cvpress_N))
+
+# Calculate AIC 
+aic_N <- AIC(model_NAmes)
+print(paste("AIC:", aic_N))
+```
+
+
+```{r}
+# Plot NAmes GrLiveArea vs SalePrice
+ggplot(NAmes, aes(x = GrLivArea, y = LogSalePrice)) +
+  geom_point(alpha = 0.5, color = "#619CFF") +
+  geom_line(aes(y = LogpredictedPrice), color = "black", size = 1) +
+  labs(title = "Sales Price vs Living Area of North Ames Neighborhood", 
+       x = "Living Area (sqft)", y = "Log(Sales Price)") +
+  theme_minimal()
+```
+
+
+```{r}
+#Check Assumptions
+par(mfrow = c(2, 2))  # Arrange the plots in a 2x2 grid
+plot(model_NAmes)
+```
+
+```{r}
+# Check Assumptions
+par(mfrow = c(2, 2))
+
+# Residuals vs Fitted values
+plot(fitted(model_NAmes), residuals(model_NAmes),
+     xlab = "Fitted Values", ylab = "Residuals", main = "Residuals vs. Fitted Values", pch = 19, col="#619CFF")
+abline(h = 0, col = "black")
+
+  # Studentized Residuals
+plot(fitted(model_NAmes), rstudent(model_NAmes),
+     xlab = "Fitted Values", ylab = "Studentized Residuals", main = "Studentized Residuals vs. Fitted Values", 
+     pch = 19, col="#619CFF")
+abline(h = 0, col = "black")
+  
+# Histogram of residuals
+hist(residuals(model_NAmes),
+     xlab = "Residuals", main = "Histogram of Residuals", col = "#619CFF", border = "black", breaks = 20, probability=TRUE)
+curve(dnorm(x, mean = mean(residuals(model_NAmes)), sd = sd(residuals(model_NAmes))), col = "black", lwd = 2, add = TRUE)
+
+# Q-Q plot of residuals
+qqnorm(residuals(model_NAmes), main = "Q-Q Plot of Residuals", col="#619CFF", pch=19) 
+qqline(residuals(model_NAmes), col = "black")
+```
+
+```{r}
+Edwards <- trainNoOutliers %>%
+  filter(Neighborhood %in% c("Edwards"))
+head(Edwards)
+
+#Build the Edwards regression model considering GrLivArea and Neighborhood
+model_Edwards <- lm(LogSalePrice ~ GrLivArea, data = Edwards)
+summary(model_Edwards)
+confint(model_Edwards)
+
+#plot the predicted SalePrice vs. the actual SalePrice
+Edwards$LogpredictedPrice <- predict(model_Edwards, newdata = Edwards)
+Edwards$predictedPrice <- exp(Edwards$LogpredictedPrice)
+
+# Find CV PRESS
+cvpress_E <- sum((Edwards$SalePrice - Edwards$predictedPrice)^2)
+print(paste("CV PRESS:", cvpress_E))
+
+# Calculate AIC 
+aic_E <- AIC(model_Edwards)
+print(paste("AIC:", aic_E))
+```
+
+
+```{r}
+# Plot Edwards GrLiveArea vs SalePrice
+ggplot(Edwards, aes(x = GrLivArea, y = LogSalePrice)) +
+  geom_point(alpha = 0.5, color = "#00BA38") +
+  geom_line(aes(y = LogpredictedPrice), color = "black", size = 1) +
+  labs(title = "Sales Price vs Living Area of Edwards Neighborhood", 
+       x = "Living Area (sqft)", y = "Log(Sales Price)") +
+  theme_minimal()
+```
+
+
+```{r}
+# Check Assumptions
+par(mfrow = c(2, 2))
+
+# Residuals vs Fitted values
+plot(fitted(model_Edwards), residuals(model_Edwards),
+     xlab = "Fitted Values", ylab = "Residuals", main = "Residuals vs. Fitted Values", pch = 19, col="#00BA38")
+abline(h = 0, col = "black")
+
+  # Studentized Residuals
+plot(fitted(model_Edwards), rstudent(model_Edwards),
+     xlab = "Fitted Values", ylab = "Studentized Residuals", main = "Studentized Residuals vs. Fitted Values", 
+     pch = 19, col="#00BA38")
+abline(h = 0, col = "black")
+  
+# Histogram of residuals
+hist(residuals(model_Edwards),
+     xlab = "Residuals", main = "Histogram of Residuals", col = "#00BA38", border = "black", breaks = 20, probability=TRUE)
+curve(dnorm(x, mean = mean(residuals(model_Edwards)), sd = sd(residuals(model_Edwards))), col = "black", lwd = 2, add = TRUE)
+
+# Q-Q plot of residuals
+qqnorm(residuals(model_Edwards), main = "Q-Q Plot of Residuals", col="#00BA38", pch=19) 
+qqline(residuals(model_Edwards), col = "black")
+```
+```{r}
+# Check Assumptions
+par(mfrow = c(2, 2))  # Arrange the plots in a 2x2 grid
+plot(model_Edwards)
+```
+
+```{r}
+BrkSide <- trainNoOutliers %>%
+  filter(Neighborhood %in% c("BrkSide"))
+head(BrkSide)
+
+#Build the Brookside regression model considering GrLivArea and Neighborhood
+model_BrkSide <- lm(LogSalePrice ~ GrLivArea, data = BrkSide)
+summary(model_BrkSide)
+confint(model_BrkSide)
+
+# Obtain the predicted SalePrice
+BrkSide$LogpredictedPrice <- predict(model_BrkSide, newdata = BrkSide)
+BrkSide$predictedPrice <- exp(BrkSide$LogpredictedPrice)
+
+# Find CV PRESS
+cvpress_B <- sum((BrkSide$SalePrice - BrkSide$predictedPrice)^2)
+print(paste("CV PRESS:", cvpress_B))
+
+# Calculate AIC 
+aic_B <- AIC(model_BrkSide)
+print(paste("AIC:", aic_B))
+```
+
+
+```{r}
+# Plot Brookside GrLivArea vs LogSale Price
+ggplot(BrkSide, aes(x = GrLivArea, y = LogSalePrice)) +
+  geom_point(alpha = 0.5, color = "#F8766D") +
+  geom_line(aes(y = LogpredictedPrice), color = "black", size = 1) +
+  labs(title = "Sales Price vs Living Area of Brookside Neighborhood", 
+       x = "Living Area (sqft)", y = "Log(Sales Price)") +
+  theme_minimal()
+```
+
+
+```{r}
+# Check Assumptions
+
+par(mfrow = c(2, 2))
+
+# Residuals vs Fitted values
+plot(fitted(model_BrkSide), residuals(model_BrkSide),
+     xlab = "Fitted Values", ylab = "Residuals", main = "Residuals vs. Fitted Values", pch = 19, col="#F8766D")
+abline(h = 0, col = "black")
+
+  # Studentized Residuals
+plot(fitted(model_BrkSide), rstudent(model_BrkSide),
+     xlab = "Fitted Values", ylab = "Studentized Residuals", main = "Studentized Residuals vs. Fitted Values", 
+     pch = 19, col="#F8766D")
+abline(h = 0, col = "black")
+  
+# Histogram of residuals
+hist(residuals(model_BrkSide),
+     xlab = "Residuals", main = "Histogram of Residuals", col = "#F8766D", border = "black", breaks = 20, probability=TRUE)
+curve(dnorm(x, mean = mean(residuals(model_BrkSide)), sd = sd(residuals(model_BrkSide))), col = "black", lwd = 2, add = TRUE)
+
+# Q-Q plot of residuals
+qqnorm(residuals(model_BrkSide), main = "Q-Q Plot of Residuals", col="#F8766D", pch=19) 
+qqline(residuals(model_BrkSide), col = "black")
+```
+```{r}
+# Check assumptions
+par(mfrow = c(2, 2))  # Arrange the plots in a 2x2 grid
+plot(model_BrkSide)
+```
+
+
+```{r}
+# Fit linear regression models separately for each neighborhood
+lmmodel_NAmes <- lm(SalePrice ~ GrLivArea, data = filter(trainNoOutliers, Neighborhood == "NAmes"))
+lmmodel_Edwards <- lm(SalePrice ~ GrLivArea, data = filter(trainNoOutliers, Neighborhood == "Edwards"))
+lmmodel_Brkside <- lm(SalePrice ~ GrLivArea, data = filter(trainNoOutliers, Neighborhood == "BrkSide"))
+
+# Create a base plot
+ggplot(trainNoOutliers, aes(x = GrLivArea, y = LogSalePrice, color = Neighborhood, shape=Neighborhood)) +
+  geom_point(alpha = 0.5) +  # Scatter plot
+  geom_smooth(data = filter(trainNoOutliers, Neighborhood == "NAmes"), method = "lm", se = FALSE, color = "blue") +
+  geom_smooth(data = filter(trainNoOutliers, Neighborhood == "Edwards"), method = "lm", se = FALSE, color = "green3") + 
+  geom_smooth(data = filter(trainNoOutliers, Neighborhood == "BrkSide"), method = "lm", se = FALSE, color = "red") +  
+  labs(title = "Sales Price vs Living Area by Neighborhood",
+       x = "Living Area (sqft)", y = "Log(Sales Price)") +
+  scale_color_discrete(labels = c("NAmes" = "North Ames", "Edwards" = "Edwards", "BrkSide" = "Brookside")) +
+  scale_shape_discrete(labels = c("NAmes" = "North Ames", "Edwards" = "Edwards", "BrkSide" = "Brookside")) +
+  theme_minimal()
+```
