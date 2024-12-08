@@ -1,0 +1,125 @@
+---
+title: "RShiny Ames Housing"
+output: html_notebook
+---
+
+```{r}
+library(shiny)
+library(ggplot2)
+library(dplyr)
+library(readr)
+
+data <- read.csv("/Users/katie/Documents/MSDS/Statistical Science/Unit 13/Project/train.csv")
+data <- data %>% filter(GrLivArea <= 4000)
+
+neighborhoodReal <- c(
+  "Blmngtn" = "Bloomington Heights",
+  "Blueste" = "Bluestem",
+  "BrDale" = "Briardale",
+  "BrkSide" = "Brookside",
+  "ClearCr" = "Clear Creek",
+  "CollgCr" = "College Creek",
+  "Crawfor" = "Crawford",
+  "Edwards" = "Edwards",
+  "Gilbert" = "Gilbert",
+  "IDOTRR" = "Iowa DOT and Rail Road",
+  "MeadowV" = "Meadow Village",
+  "Mitchel" = "Mitchell",
+  "NAmes" = "North Ames",
+  "NoRidge" = "Northridge",
+  "NPkVill" = "Northpark Villa",
+  "NridgHt" = "Northridge Heights",
+  "NWAmes" = "Northwest Ames",
+  "OldTown" = "Old Town",
+  "SWISU" = "South & West of Iowa State University",
+  "Sawyer" = "Sawyer",
+  "SawyerW" = "Sawyer West",
+  "Somerst" = "Somerset",
+  "StoneBr" = "Stone Brook",
+  "Timber" = "Timberland",
+  "Veenker" = "Veenker"
+)
+
+data$Neighborhood <- recode(data$Neighborhood, !!!neighborhoodReal)
+```
+
+```{r}
+ui <- fluidPage(
+  titlePanel("Ames, IA House Price Analysis"),
+  
+  # Sidebar with a dropdown to select neighborhoods and option for single color
+  sidebarLayout(
+    sidebarPanel(
+           HTML("<p style='font-size: 12px; font-style: italic;'>Uncheck to view plots by neighborhood</strong></p>"),
+      
+      checkboxInput("singleColor", 
+                    "Plot All", 
+                    value = TRUE),
+      
+      # Conditional Panel: Only show neighborhood dropdown when "singleColor" is unchecked
+      conditionalPanel(
+        condition = "input.singleColor == false",
+        selectInput("selectedNeighborhoods", 
+                    "Select neighborhoods to display:",
+                            #HTML("<p style='font-size: 12px; font-style: italic;'>Delete 'All' to view neighborhoods individually </strong></p>"),
+                    choices = c("All" = "All", unique(data$Neighborhood)),
+                    selected = "All",
+                    multiple = TRUE),
+        HTML("<p style='font-size: 12px; font-style: italic;'>Delete 'All' to view neighborhoods individually </strong></p>")
+      )
+    ),
+    
+    mainPanel(
+      plotOutput("pricePlot", height = "650px") 
+    )
+  )
+)
+
+
+server <- function(input, output) {
+  
+  output$pricePlot <- renderPlot({
+    if ("All" %in% input$selectedNeighborhoods) {
+      plot_data <- data 
+    } else {
+      plot_data <- data %>% filter(Neighborhood %in% input$selectedNeighborhoods)
+    }
+    
+    if (input$singleColor) {
+      ggplot(plot_data, aes(x = GrLivArea, y = log(SalePrice))) +
+        geom_point(color = "orange", alpha = 0.6) +  # Light gray for all points
+        labs(x = "Above Ground Living Area (sqft)", 
+             y = "Log(Sale Price)",
+             title = "Sale Price vs Above Ground Living Area") +
+        scale_x_continuous(breaks = seq(0, max(plot_data$GrLivArea), by = 200)) + 
+        #theme_minimal() +
+        theme(legend.position = "bottom", 
+              legend.box = "horizontal", 
+              legend.direction = "horizontal",
+              axis.title = element_text(size = 14),  
+              plot.title = element_text(hjust = 0.5, size = 16))
+    } else {
+      
+      ggplot(plot_data, aes(x = GrLivArea, y = log(SalePrice), color = Neighborhood)) +
+        geom_point(alpha = 0.6) +
+        labs(x = "Above Ground Living Area (sqft)", 
+             y = "Log(Sale Price)",
+             title = "Sale Price vs Above Ground Living Area by Neighborhood") +
+        scale_x_continuous(breaks = seq(0, max(plot_data$GrLivArea), by = 200)) + 
+        scale_color_discrete(name = "Neighborhood") +  
+        #theme_minimal() +
+        theme(legend.position = "bottom", 
+              legend.box = "horizontal", 
+              legend.direction = "horizontal",
+              legend.key.height = unit(0.4, "cm"),
+              legend.key.width = unit(0.4, "cm"),
+              axis.title = element_text(size = 14),  
+              plot.title = element_text(hjust = 0.5, size = 16))  
+    }
+  })
+}
+
+shinyApp(ui = ui, server = server)
+
+```
+
